@@ -4,13 +4,13 @@ html {
     height: 100%;
     margin-bottom: 0.0833em;
     margin-top: 0.0833em;
+    font-size: 14px;
 }
 
 body {
     font-family: 'Noto Sans JP';
     text-align: left;
     min-width: 63.33em;
-    font-size: 14px;
     background-color: #000000;
     color: #ffffff;
 }
@@ -87,7 +87,6 @@ li {
 
 #Footer {
     margin-top: 14em;
-    padding-bottom: 1em;
     text-align: left;
     background-color: transparent;
 }
@@ -152,8 +151,7 @@ li {
     bottom: 0;
     width: 100%;
     margin-top: 0;
-    padding-bottom: 1em;
-    line-height: 1.8em;
     text-align: left;
     color: #aaa;
+    background-color: #000000;
 }
