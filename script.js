@@ -76,6 +76,8 @@ let lastMouseY = 0;
 let autoRotationTimeout = null;
 let isAutoRotating = true;
 let isTransitioningToStop = false;
+let touchStartX = 0;
+let touchStartY = 0;
 
 // ============================================================================
 // Utility Functions
@@ -523,6 +525,57 @@ function startAutoRotationTimer() {
     }, AUTO_ROTATION_DELAY);
 }
 
+function handleTouchStart(e) {
+    e.preventDefault(); // Prevent scrolling while dragging
+    const touch = e.touches[0];
+    isDragging = true;
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+    lastMouseX = touch.clientX;
+    lastMouseY = touch.clientY;
+    lastDragTime = Date.now();
+    dragVelocityX = 0;
+    dragVelocityY = 0;
+    isAutoRotating = false;
+    
+    if (autoRotationTimeout) {
+        clearTimeout(autoRotationTimeout);
+    }
+}
+
+function handleTouchMove(e) {
+    e.preventDefault(); // Prevent scrolling while dragging
+    const touch = e.touches[0];
+    mouseX = touch.clientX - rect.left;
+    mouseY = touch.clientY - rect.top;
+    
+    if (isDragging) {
+        const currentTime = Date.now();
+        const deltaTime = currentTime - lastDragTime;
+        
+        if (deltaTime > 0) {
+            dragVelocityX = (touch.clientX - lastMouseX) / deltaTime;
+            dragVelocityY = (touch.clientY - lastMouseY) / deltaTime;
+        }
+        
+        rotationY += (touch.clientX - lastMouseX) * DRAG_SENSITIVITY;
+        rotationX += (touch.clientY - lastMouseY) * DRAG_SENSITIVITY;
+        
+        lastMouseX = touch.clientX;
+        lastMouseY = touch.clientY;
+        lastDragTime = currentTime;
+    }
+}
+
+function handleTouchEnd(e) {
+    isDragging = false;
+    setRotationState(false);
+    
+    if (activeVertex === null) {
+        startAutoRotationTimer();
+    }
+}
+
 // ============================================================================
 // Initialization
 // ============================================================================
@@ -571,6 +624,11 @@ function initialize() {
     canvas.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('mouseup', handleMouseUp);
     window.addEventListener('mouseleave', handleMouseUp);
+    
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    canvas.addEventListener('touchend', handleTouchEnd);
+    canvas.addEventListener('touchcancel', handleTouchEnd);
     
     createLegend();
 }
