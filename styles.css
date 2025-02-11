@@ -20,4 +20,96 @@ canvas {
     background: transparent;
     position: absolute;
     z-index: 2;
+    touch-action: none;
+}
+
+.ripple {
+    position: absolute;
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    border-radius: 50%;
+    pointer-events: none;
+    animation: rippleAnimation 1s ease-out forwards;
+    width: 20px;
+    height: 20px;
+    transform: translate(-50%, -50%);
+}
+
+@keyframes rippleAnimation {
+    0% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 0.8;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(3);
+        opacity: 0;
+    }
+}
+
+.vertex-menu {
+    position: absolute;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 12px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    transform: scale(0.9) translateX(-50%) translateY(-50%) scaleY(0.8);
+    transform-origin: center;
+    line-height: 0.8;
+}
+
+.vertex-menu.active {
+    opacity: 1;
+    transform: scale(1) translateX(-50%) translateY(-50%) scaleY(0.8);
+}
+
+.vertex-menu.removing {
+    opacity: 0;
+    transform: scale(0.9) translateX(-50%) translateY(-50%) scaleY(0.8);
+}
+
+.vertex-menu-header {
+    font-size: 15px;
+    margin-bottom: 2px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+    text-align: center;
+    letter-spacing: -0.5px;
+    transform: scaleY(0.8);
+}
+
+.vertex-menu-item {
+    padding: 0px 0;
+    margin: 10px 0;
+    cursor: pointer;
+    pointer-events: auto;
+    transition: color 0.3s ease;
+    text-align: center;
+    font-size: 11px;
+    text-transform: lowercase;
+    transform: scaleY(1);
+    user-select: none;
+    position: relative;
+    z-index: 3;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.vertex-menu-item:hover {
+    color: rgba(255, 255, 255, 1);
+}
+
+@media (max-width: 768px) {
+    .vertex-menu {
+        font-size: 14px;
+    }
+    
+    .vertex-menu-header {
+        font-size: 15px;
+        padding-bottom: 6px;
+    }
+    
+    .vertex-menu-item {
+        font-size: 13px;
+        margin: 15px 0;
+        padding: 5px 0;
+    }
 }

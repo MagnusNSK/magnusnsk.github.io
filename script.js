@@ -78,6 +78,11 @@ let isAutoRotating = true;
 let isTransitioningToStop = false;
 let touchStartX = 0;
 let touchStartY = 0;
+let activeMenu = null;
+let ripples = [];
+let wordCloudLocked = false;
+let menuItemPositions = [];
+let touchMoved = false;
 
 // ============================================================================
 // Utility Functions
@@ -140,6 +145,21 @@ function unprojectPoint(screenX, screenY, depth) {
     ];
 }
 
+function createRipple(x, y) {
+    const ripple = document.createElement('div');
+    ripple.className = 'ripple';
+    ripple.style.left = `${x}px`;
+    ripple.style.top = `${y}px`;
+    document.body.appendChild(ripple);
+    
+    ripples.push(ripple);
+    
+    ripple.addEventListener('animationend', () => {
+        document.body.removeChild(ripple);
+        ripples = ripples.filter(r => r !== ripple);
+    });
+}
+
 // ============================================================================
 // Word Management
 // ============================================================================
@@ -166,27 +186,27 @@ const words = [
 const vertexInfo = [
     { 
         point: [0, 250, 0].map(x => x * STAR_SCALE),
-        words: ["neural-1", "synapse-1", "cortex-1", "brain-1", "mind-1"]
+        words: ["one-1", "One-1", "ONE-1", "oNE-1", "onE-1"]
     },
     { 
         point: [0, -250, 0].map(x => x * STAR_SCALE),
-        words: ["quantum-2", "particle-2", "wave-2", "field-2", "energy-2"]
+        words: ["two-2", "Two-2", "TWO-2", "tWOd-2", "twO-2"]
     },
     { 
         point: [250, 0, 0].map(x => x * STAR_SCALE),
-        words: ["data-3", "stream-3", "flow-3", "process-3", "compute-3"]
+        words: ["three-3", "Three-3", "THREE-3", "thREE-3", "thrEE-3"]
     },
     { 
         point: [-250, 0, 0].map(x => x * STAR_SCALE),
-        words: ["cyber-4", "network-4", "matrix-4", "grid-4", "mesh-4"]
+        words: ["four-4", "Four-4", "FOUR-4", "foUR-4", "fouR-4"]
     },
     { 
         point: [0, 0, 250].map(x => x * STAR_SCALE),
-        words: ["bio-5", "synth-5", "hybrid-5", "fusion-5", "merge-5"]
+        words: ["five-5", "Five-5", "FIVE-5", "fiVE-5", "fivE-5"]
     },
     { 
         point: [0, 0, -250].map(x => x * STAR_SCALE),
-        words: ["void-6", "deep-6", "space-6", "null-6", "zero-6"]
+        words: ["six-6", "Six-6", "SIX-6", "sIX-6", "siX-6"]
     }
 ].map(info => ({
     ...info,
@@ -202,8 +222,7 @@ class FloatingWord {
         this.availableWords = words;
         this.word = this.getRandomWord();
         this.repositionInSphere();
-        this.changeTimer = Math.random() * 100;
-        this.opacity = Math.random() * 0.3 + 0.4;
+        this.changeTimer = Math.random() * 200 + 100; // Increased timer for more stability
         this.font = '10px "Space Mono", monospace';
     }
 
@@ -214,36 +233,52 @@ class FloatingWord {
     repositionInSphere() {
         const theta = Math.random() * 2 * Math.PI;
         const phi = Math.acos((Math.random() * 2) - 1);
-        const radius = (Math.random() * 0.3 + 0.7) * 150 * STAR_SCALE;
+        
+        // Create stronger bias towards the center using a higher power curve
+        const radiusBias = Math.pow(Math.random(), 2.5); // Increased power for stronger center bias
+        const minRadius = 100 * STAR_SCALE;
+        const maxRadius = 500 * STAR_SCALE; // Increased max radius
+        const radius = minRadius + (maxRadius - minRadius) * radiusBias;
         
         this.x = radius * Math.sin(phi) * Math.cos(theta);
         this.y = radius * Math.sin(phi) * Math.sin(theta);
         this.z = radius * Math.cos(phi);
         
+        // Adjust opacity based on distance from center with sharper falloff
+        const distanceFromCenter = Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
+        const maxDistance = maxRadius;
+        const normalizedDistance = distanceFromCenter / maxDistance;
+        
+        // Sharper opacity falloff
+        this.baseOpacity = Math.max(0.1, 0.8 - Math.pow(normalizedDistance, 1.5));
+        
+        // Slower, more subtle fade
         this.fadeDirection = Math.random() < 0.5 ? -1 : 1;
-        this.fadeSpeed = 0.002 + Math.random() * 0.002;
+        this.fadeSpeed = 0.0005 + Math.random() * 0.0005; // Much slower fade
+        this.opacity = this.baseOpacity;
     }
 
     update() {
         this.opacity += this.fadeDirection * this.fadeSpeed;
-        if (this.opacity <= 0.4 || this.opacity >= 0.7) {
+        const minOpacity = Math.max(0.1, this.baseOpacity - 0.05);
+        const maxOpacity = Math.min(0.8, this.baseOpacity + 0.05);
+        
+        if (this.opacity <= minOpacity || this.opacity >= maxOpacity) {
             this.fadeDirection *= -1;
-            if (this.opacity <= 0.4) {
-                this.currentWord = this.getRandomWord();
-            }
+            this.opacity = Math.max(minOpacity, Math.min(maxOpacity, this.opacity));
         }
 
         this.changeTimer--;
         if (this.changeTimer <= 0) {
             this.currentWord = this.getRandomWord();
-            this.changeTimer = Math.random() * 100 + 50;
+            this.changeTimer = Math.random() * 200 + 100; // Longer word display time
         }
     }
 
     setAvailableWords(newWords) {
         if (this.availableWords !== newWords) {
             this.availableWords = newWords;
-            this.changeTimer = Math.random() * 30;
+            this.changeTimer = Math.random() * 50;
         }
     }
 }
@@ -442,8 +477,10 @@ function handleVertexHover(closestVertex) {
     if (closestVertex !== null) {
         setRotationState(false);
         clearTimeout(autoRotationTimeout);
-        updateFloatingWords(closestVertex);
-    } else if (previousVertex !== null) {
+        if (!wordCloudLocked) {
+            updateFloatingWords(closestVertex);
+        }
+    } else if (previousVertex !== null && !wordCloudLocked) {
         setRotationState(false);
         startAutoRotationTimer();
         updateFloatingWords();
@@ -456,38 +493,57 @@ function handleResize() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
     rect = canvas.getBoundingClientRect();
+    
+    // Clean up active menu on resize
+    if (activeMenu) {
+        document.body.removeChild(activeMenu);
+        activeMenu = null;
+    }
 }
 
-function handleClick(e) {
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-    
-    vertexInfo.forEach((vertex, index) => {
-        if (vertex.screenPosition) {
-            const dx = mouseX - vertex.screenPosition.x;
-            const dy = mouseY - vertex.screenPosition.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            
-            if (distance < vertex.screenPosition.radius) {
-                activatePoint(index);
-            }
+function handleMenuClick(x, y) {
+    if (activeMenu) {
+        const clickedItem = menuItemPositions.find(item => {
+            const bounds = item.getBounds();
+            return x >= bounds.left && 
+                   x <= bounds.right && 
+                   y >= bounds.top && 
+                   y <= bounds.bottom;
+        });
+
+        if (clickedItem) {
+            clickedItem.action();
+            return true;  // Indicate we handled a menu click
         }
-    });
-}
-
-function activatePoint(index) {
-    activeVertex = index;
-    targetRotationSpeed = { ...ROTATION_SPEEDS.stopped };
-    floatingWords.forEach(fw => {
-        fw.setAvailableWords(vertexInfo[index].words);
-    });
-    
-    document.querySelectorAll('.legend-item').forEach((item, i) => {
-        item.classList.toggle('active', i === index);
-    });
+    }
+    return false;  // No menu item was clicked
 }
 
 function handleMouseDown(e) {
+    // Check for menu clicks first
+    if (handleMenuClick(e.clientX, e.clientY)) {
+        return;  // Stop here if we clicked a menu item
+    }
+    
+    // Check for vertex clicks before starting drag
+    const localMouseX = e.clientX - rect.left;
+    const localMouseY = e.clientY - rect.top;
+    
+    vertexInfo.forEach((vertex, index) => {
+        if (vertex.screenPosition) {
+            const dx = localMouseX - vertex.screenPosition.x;
+            const dy = localMouseY - vertex.screenPosition.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < vertex.screenPosition.radius) {
+                createRipple(vertex.screenPosition.x, vertex.screenPosition.y);
+                handleVertexClick(index);
+                return;
+            }
+        }
+    });
+    
+    // If we get here, start dragging
     isDragging = true;
     dragStartX = e.clientX;
     dragStartY = e.clientY;
@@ -517,17 +573,22 @@ function startAutoRotationTimer() {
         clearTimeout(autoRotationTimeout);
     }
     
-    autoRotationTimeout = setTimeout(() => {
-        if (!isDragging && activeVertex === null) {
-            setRotationState(true);
-            resetDragState();
-        }
-    }, AUTO_ROTATION_DELAY);
+    // Only start auto-rotation if no menu is active
+    if (!activeMenu) {
+        autoRotationTimeout = setTimeout(() => {
+            if (!isDragging && activeVertex === null) {
+                setRotationState(true);
+                resetDragState();
+            }
+        }, AUTO_ROTATION_DELAY);
+    }
 }
 
 function handleTouchStart(e) {
-    e.preventDefault(); // Prevent scrolling while dragging
+    e.preventDefault();
     const touch = e.touches[0];
+    
+    touchMoved = false;
     isDragging = true;
     touchStartX = touch.clientX;
     touchStartY = touch.clientY;
@@ -544,36 +605,79 @@ function handleTouchStart(e) {
 }
 
 function handleTouchMove(e) {
-    e.preventDefault(); // Prevent scrolling while dragging
+    e.preventDefault();
     const touch = e.touches[0];
-    mouseX = touch.clientX - rect.left;
-    mouseY = touch.clientY - rect.top;
     
-    if (isDragging) {
-        const currentTime = Date.now();
-        const deltaTime = currentTime - lastDragTime;
-        
-        if (deltaTime > 0) {
-            dragVelocityX = (touch.clientX - lastMouseX) / deltaTime;
-            dragVelocityY = (touch.clientY - lastMouseY) / deltaTime;
-        }
-        
-        rotationY += (touch.clientX - lastMouseX) * DRAG_SENSITIVITY;
-        rotationX += (touch.clientY - lastMouseY) * DRAG_SENSITIVITY;
-        
-        lastMouseX = touch.clientX;
-        lastMouseY = touch.clientY;
-        lastDragTime = currentTime;
+    // Calculate movement distance
+    const moveDistance = Math.sqrt(
+        Math.pow(touch.clientX - touchStartX, 2) + 
+        Math.pow(touch.clientY - touchStartY, 2)
+    );
+    
+    // If we've moved more than a small threshold, mark as dragging
+    if (moveDistance > 5) {
+        touchMoved = true;
     }
+    
+    if (!isDragging) return;
+    
+    const currentTime = Date.now();
+    const deltaTime = currentTime - lastDragTime;
+    
+    if (deltaTime > 0) {
+        dragVelocityX = (touch.clientX - lastMouseX) / deltaTime;
+        dragVelocityY = (touch.clientY - lastMouseY) / deltaTime;
+    }
+    
+    rotationY += (touch.clientX - lastMouseX) * DRAG_SENSITIVITY * 0.8;
+    rotationX += (touch.clientY - lastMouseY) * DRAG_SENSITIVITY * 0.8;
+    
+    lastMouseX = touch.clientX;
+    lastMouseY = touch.clientY;
+    lastDragTime = currentTime;
 }
 
 function handleTouchEnd(e) {
+    if (!touchMoved) {
+        // Only handle click if we haven't dragged
+        const localX = lastMouseX - rect.left;
+        const localY = lastMouseY - rect.top;
+        
+        // Check for menu clicks first
+        if (handleMenuClick(lastMouseX, lastMouseY)) {
+            isDragging = false;
+            return;
+        }
+        
+        // Check for vertex clicks
+        vertexInfo.forEach((vertex, index) => {
+            if (vertex.screenPosition) {
+                const dx = localX - vertex.screenPosition.x;
+                const dy = localY - vertex.screenPosition.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance < vertex.screenPosition.radius * 1.5) {
+                    createRipple(vertex.screenPosition.x, vertex.screenPosition.y);
+                    handleVertexClick(index);
+                }
+            }
+        });
+    }
+    
     isDragging = false;
     setRotationState(false);
     
     if (activeVertex === null) {
         startAutoRotationTimer();
     }
+}
+
+// Add this new function to handle touch hover simulation
+function handleTouchHover(x, y) {
+    const localX = x - rect.left;
+    const localY = y - rect.top;
+    const closestVertex = findClosestVertex(localX, localY);
+    handleVertexHover(closestVertex);
 }
 
 // ============================================================================
@@ -616,19 +720,23 @@ function initialize() {
     ctx = canvas.getContext('2d');
     handleResize();
     
-    floatingWords = Array(100).fill(null).map(() => new FloatingWord());
+    // Create more words but they'll be more concentrated in the center
+    floatingWords = Array(200).fill(null).map(() => new FloatingWord());
     
     window.addEventListener('resize', handleResize);
     canvas.addEventListener('mousemove', handleMouseMove);
-    canvas.addEventListener('click', handleClick);
     canvas.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('mouseup', handleMouseUp);
     window.addEventListener('mouseleave', handleMouseUp);
     
+    // Update touch event listeners
     canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
     canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
     canvas.addEventListener('touchend', handleTouchEnd);
     canvas.addEventListener('touchcancel', handleTouchEnd);
+    
+    // Prevent default touch behaviors on the canvas
+    canvas.style.touchAction = 'none';
     
     createLegend();
 }
@@ -670,6 +778,28 @@ function applyRotation() {
     rotationZ += currentRotationSpeed.z;
 }
 
+function updateMenuPosition() {
+    if (activeMenu) {
+        const vertexIndex = parseInt(activeMenu.dataset.vertexIndex);
+        const vertex = vertexInfo[vertexIndex];
+        const rotated = rotate3D(vertex.point, rotationX, rotationY, rotationZ);
+        const scale = PERSPECTIVE.scale(rotated[2]);
+        
+        // Calculate direction vector from center to point
+        const dx = rotated[0];
+        const dy = rotated[1];
+        const length = Math.sqrt(dx * dx + dy * dy);
+        
+        // Position menu along this vector
+        const menuDistance = 60; // Same distance as in handleClick
+        const screenX = (rotated[0] + (dx / length) * menuDistance) * scale + canvas.width / 2;
+        const screenY = (rotated[1] + (dy / length) * menuDistance) * scale + canvas.height / 2;
+        
+        activeMenu.style.left = `${screenX}px`;
+        activeMenu.style.top = `${screenY}px`;
+    }
+}
+
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
@@ -677,6 +807,7 @@ function draw() {
     drawFloatingWords();
     drawVertexNumbers();
     drawVertexIndicator();
+    updateMenuPosition();
     
     updateRotation();
     requestAnimationFrame(draw);
@@ -687,3 +818,219 @@ function draw() {
 // ============================================================================
 initialize();
 draw();
+
+// ============================================================================
+// Menu Configuration
+// ============================================================================
+const menuConfigs = {
+    tools: {
+        title: 'TOOLS',
+        items: [
+            { 
+                label: 'nsk utility', 
+                action: () => {
+                    const win = window.open();
+                    if (win) {
+                        win.opener = null;
+                        win.location = 'https://github.com/MagnusNSK/nsk-utility';
+                    }
+                }
+            }
+        ]
+    },
+    about: {
+        title: 'ABOUT',
+        items: [
+            { 
+                label: 'documents', 
+                action: () => {
+                    const win = window.open();
+                    if (win) {
+                        win.opener = null;
+                        win.location = 'https://github.com/MagnusNSK/documents';
+                    }
+                }
+            },
+            { label: 'incomplete', action: () => console.log('Not complete...') }
+        ]
+    },
+    config: {
+        title: 'CONFIG',
+        items: [
+            { 
+                label: 'dot files', 
+                action: () => {
+                    const win = window.open();
+                    if (win) {
+                        win.opener = null;
+                        win.location = 'https://github.com/MagnusNSK/documents/tree/main/dot-files';
+                    }
+                }
+            }
+        ]
+    },
+    media: {
+        title: 'MEDIA',
+        items: [
+            { label: 'incomplete', action: () => console.log('Not complete...') },
+            { label: 'incomplete', action: () => console.log('Not complete...') }
+        ]
+    },
+    links: {
+        title: 'LINKS',
+        items: [
+            { 
+                label: 'x.com', 
+                action: () => {
+                    const win = window.open();
+                    if (win) {
+                        win.opener = null;
+                        win.location = 'https://x.com/MagnusNSK';
+                    }
+                }
+            },
+            { 
+                label: 'itch.io', 
+                action: () => {
+                    const win = window.open();
+                    if (win) {
+                        win.opener = null;
+                        win.location = 'https://magnusnsk.itch.io/';
+                    }
+                }
+            },
+            { 
+                label: 'youtube.com', 
+                action: () => {
+                    const win = window.open();
+                    if (win) {
+                        win.opener = null;
+                        win.location = 'https://www.youtube.com/@oloffnsk';
+                    }
+                }
+            }
+        ]
+    },
+    null: {
+        title: 'NULL',
+        items: [
+            { label: 'incomplete', action: () => console.log('Not complete...') },
+            { label: 'incomplete', action: () => console.log('Not complete...') },
+            { label: 'incomplete', action: () => console.log('Not complete...') }
+        ]
+    }
+};
+
+function getMenuConfig(index) {
+    const configKeys = ['tools', 'about', 'config', 'media', 'links', 'null'];
+    return menuConfigs[configKeys[index]];
+}
+
+function createVertexMenu(index) {
+    const menu = document.createElement('div');
+    menu.className = 'vertex-menu';
+    menu.id = `vertex-menu-${index}`;
+    menuItemPositions = [];  // Reset positions array
+    
+    const config = getMenuConfig(index);
+    
+    const header = document.createElement('div');
+    header.className = 'vertex-menu-header';
+    header.textContent = config.title;
+    menu.appendChild(header);
+    
+    config.items.forEach((item, itemIndex) => {
+        const menuItem = document.createElement('div');
+        menuItem.className = 'vertex-menu-item';
+        menuItem.textContent = item.label;
+        menuItem.dataset.index = itemIndex;
+        menu.appendChild(menuItem);
+        
+        // Store the item's action for later use
+        menuItemPositions.push({
+            action: item.action,
+            getBounds: () => {
+                const rect = menuItem.getBoundingClientRect();
+                return {
+                    left: rect.left,
+                    right: rect.right,
+                    top: rect.top,
+                    bottom: rect.bottom
+                };
+            }
+        });
+    });
+    
+    document.body.appendChild(menu);
+    return menu;
+}
+
+function handleVertexClick(index) {
+    if (activeMenu) {
+        if (activeMenu.dataset.vertexIndex === index.toString()) {
+            activeMenu.classList.add('removing');
+            activeMenu.addEventListener('transitionend', () => {
+                if (activeMenu && activeMenu.parentNode) {
+                    try {
+                        document.body.removeChild(activeMenu);
+                    } catch (e) {
+                        console.log('Menu already removed');
+                    }
+                }
+            }, { once: true });
+            activeMenu = null;
+            wordCloudLocked = false;
+            menuItemPositions = [];
+            return;
+        } else {
+            try {
+                if (activeMenu.parentNode) {
+                    document.body.removeChild(activeMenu);
+                }
+            } catch (e) {
+                console.log('Menu already removed');
+            }
+            menuItemPositions = [];
+        }
+    }
+    
+    const menu = createVertexMenu(index);
+    menu.dataset.vertexIndex = index;
+    
+    wordCloudLocked = true;
+    updateFloatingWords(index);
+    
+    const vertex = vertexInfo[index];
+    const rotated = rotate3D(vertex.point, rotationX, rotationY, rotationZ);
+    const scale = PERSPECTIVE.scale(rotated[2]);
+    
+    const dx = rotated[0];
+    const dy = rotated[1];
+    const length = Math.sqrt(dx * dx + dy * dy);
+    
+    const menuDistance = 60;
+    const screenX = (rotated[0] + (dx / length) * menuDistance) * scale + canvas.width / 2;
+    const screenY = (rotated[1] + (dy / length) * menuDistance) * scale + canvas.height / 2;
+    
+    menu.style.left = `${screenX}px`;
+    menu.style.top = `${screenY}px`;
+    
+    requestAnimationFrame(() => {
+        menu.classList.add('active');
+    });
+    
+    activeMenu = menu;
+    activatePoint(index);
+}
+
+function activatePoint(index) {
+    activeVertex = index;
+    targetRotationSpeed = { ...ROTATION_SPEEDS.stopped };
+    floatingWords.forEach(fw => {
+        fw.setAvailableWords(vertexInfo[index].words);
+    });
+    
+    document.querySelectorAll('.legend-item').forEach((item, i) => {
+        item.classList.toggle('active', i === index);
+    });
+}
