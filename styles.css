@@ -21,6 +21,7 @@ canvas {
     position: absolute;
     z-index: 2;
     touch-action: none;
+    background: radial-gradient(circle at center, transparent 0%, rgba(0,0,0,0.8) 80%);
 }
 
 .ripple {
@@ -49,48 +50,56 @@ canvas {
     position: absolute;
     color: rgba(255, 255, 255, 0.8);
     font-size: 12px;
-    pointer-events: none;
+    pointer-events: auto;
     opacity: 0;
     transition: opacity 0.3s ease, transform 0.3s ease;
-    transform: scale(0.9) translateX(-50%) translateY(-50%) scaleY(0.8);
+    transform: translateX(-50%) translateY(-50%) scaleY(0.8);
     transform-origin: center;
-    line-height: 0.8;
+    line-height: 1;
+    padding: 10px 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 100px;
 }
 
 .vertex-menu.active {
     opacity: 1;
-    transform: scale(1) translateX(-50%) translateY(-50%) scaleY(0.8);
+    transform: translateX(-50%) translateY(-50%) scaleY(0.8);
 }
 
 .vertex-menu.removing {
     opacity: 0;
-    transform: scale(0.9) translateX(-50%) translateY(-50%) scaleY(0.8);
+    transform: translateX(-50%) translateY(-50%) scaleY(0.8);
 }
 
 .vertex-menu-header {
-    font-size: 15px;
-    margin-bottom: 2px;
-    padding-bottom: 5px;
+    font-size: 14px;
+    margin-bottom: 6px;
+    padding-bottom: 4px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.5);
     text-align: center;
     letter-spacing: -0.5px;
     transform: scaleY(0.8);
+    pointer-events: none;
 }
 
 .vertex-menu-item {
-    padding: 0px 0;
-    margin: 10px 0;
+    padding: 4px 4px;
+    margin: 2px 0;
     cursor: pointer;
     pointer-events: auto;
     transition: color 0.3s ease;
     text-align: center;
-    font-size: 11px;
+    font-size: 12px;
     text-transform: lowercase;
     transform: scaleY(1);
     user-select: none;
     position: relative;
     z-index: 3;
     color: rgba(255, 255, 255, 0.6);
+    width: 100%;
+    display: block;
 }
 
 .vertex-menu-item:hover {
@@ -99,17 +108,44 @@ canvas {
 
 @media (max-width: 768px) {
     .vertex-menu {
-        font-size: 14px;
+        font-size: 16px;
     }
     
     .vertex-menu-header {
-        font-size: 15px;
-        padding-bottom: 6px;
+        font-size: 19px;
+        margin-bottom: 10px;
+        padding-bottom: 5px;
     }
     
     .vertex-menu-item {
-        font-size: 13px;
-        margin: 15px 0;
-        padding: 5px 0;
+        font-size: 17px;
+        padding: 10px 10px;
+        margin: 4px 0;
     }
+}
+
+.debug-button {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: transparent;
+    color: rgba(255, 255, 255, 0.4);
+    padding: 8px 12px;
+    border: none;
+    cursor: pointer;
+    font-size: 11px;
+    z-index: 1000;
+    user-select: none;
+    transition: color 0.3s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.debug-button:hover {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.debug-button.active {
+    color: rgba(255, 255, 255, 1);
 }

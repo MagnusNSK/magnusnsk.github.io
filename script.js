@@ -83,6 +83,10 @@ let ripples = [];
 let wordCloudLocked = false;
 let menuItemPositions = [];
 let touchMoved = false;
+let menuPlaneZ = 0; // Will store the Z-depth of the active menu
+let notifications = [];
+let debugMode = false;
+let isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
 
 // ============================================================================
 // Utility Functions
@@ -323,26 +327,28 @@ function drawVertexNumbers() {
         const rotated = rotate3D(vertex.point, rotationX, rotationY, rotationZ);
         const scale = PERSPECTIVE.scale(rotated[2]);
         
-        // Calculate direction vector from center to point
         const dx = rotated[0];
         const dy = rotated[1];
         const length = Math.sqrt(dx * dx + dy * dy);
         
-        // Extend position outward
         const extension = 20 * scale;
         const x = (rotated[0] + (dx / length) * extension) * scale + canvas.width / 2;
         const y = (rotated[1] + (dy / length) * extension) * scale + canvas.height / 2;
         
         const depthOpacity = ((1000 + rotated[2]) / 2000) * 0.9 + 0.1;
         
+        // Adjust font size based on device
+        const romanSize = isMobileDevice ? '14px' : '10px';
+        const subtitleSize = isMobileDevice ? '12px' : '8px';
+        
         // Draw Roman numeral
-        ctx.font = '10px "Space Mono", monospace';
+        ctx.font = `${romanSize} "Space Mono", monospace`;
         ctx.fillStyle = `rgba(255, 255, 255, ${depthOpacity})`;
         ctx.fillText(toRoman(index + 1), x, y - 6);
         
         // Draw subtitle
-        ctx.font = '8px "Space Mono", monospace';
-        ctx.fillStyle = `rgba(255, 255, 255, ${depthOpacity * 0.7})`; // Slightly more transparent
+        ctx.font = `${subtitleSize} "Space Mono", monospace`;
+        ctx.fillStyle = `rgba(255, 255, 255, ${depthOpacity * 0.7})`;
         ctx.fillText(vertex.subtitle, x, y + 6);
     });
 }
@@ -516,20 +522,24 @@ function handleResize() {
 
 function handleMenuClick(x, y) {
     if (activeMenu) {
-        const clickedItem = menuItemPositions.find(item => {
-            const bounds = item.getBounds();
-            return x >= bounds.left && 
-                   x <= bounds.right && 
-                   y >= bounds.top && 
-                   y <= bounds.bottom;
+        // Sort menu items by Z depth
+        const sortedItems = [...menuItemPositions].sort((a, b) => {
+            const boundsA = a.getBounds();
+            const boundsB = b.getBounds();
+            return boundsB.z - boundsA.z; // Front to back
         });
-
-        if (clickedItem) {
-            clickedItem.action();
-            return true;  // Indicate we handled a menu click
+        
+        // Check hits from front to back
+        for (const item of sortedItems) {
+            const bounds = item.getBounds();
+            if (x >= bounds.left && x <= bounds.right && 
+                y >= bounds.top && y <= bounds.bottom) {
+                item.action();
+                return true;
+            }
         }
     }
-    return false;  // No menu item was clicked
+    return false;
 }
 
 function handleMouseDown(e) {
@@ -600,12 +610,18 @@ function startAutoRotationTimer() {
 function handleTouchStart(e) {
     e.preventDefault();
     const touch = e.touches[0];
-    const rect = canvas.getBoundingClientRect(); // Get fresh bounds
     
-    // Adjust touch coordinates relative to canvas
-    const touchX = touch.clientX - rect.left;
-    const touchY = touch.clientY - rect.top + window.scrollY; // Add scroll offset
+    // Get fresh bounds and properly handle scroll
+    const rect = canvas.getBoundingClientRect();
+    const touchX = touch.clientX;
+    const touchY = touch.clientY;
     
+    // Check for menu clicks first
+    if (handleMenuClick(touchX, touchY)) {
+        return;
+    }
+    
+    // Initialize touch tracking
     touchMoved = false;
     isDragging = true;
     touchStartX = touchX;
@@ -624,14 +640,13 @@ function handleTouchStart(e) {
 
 function handleTouchMove(e) {
     e.preventDefault();
+    if (!isDragging) return;
+    
     const touch = e.touches[0];
-    const rect = canvas.getBoundingClientRect(); // Get fresh bounds
+    const touchX = touch.clientX;
+    const touchY = touch.clientY;
     
-    // Adjust touch coordinates relative to canvas
-    const touchX = touch.clientX - rect.left;
-    const touchY = touch.clientY - rect.top + window.scrollY; // Add scroll offset
-    
-    // Calculate movement distance using adjusted coordinates
+    // Calculate movement distance
     const moveDistance = Math.sqrt(
         Math.pow(touchX - touchStartX, 2) + 
         Math.pow(touchY - touchStartY, 2)
@@ -640,8 +655,6 @@ function handleTouchMove(e) {
     if (moveDistance > 5) {
         touchMoved = true;
     }
-    
-    if (!isDragging) return;
     
     const currentTime = Date.now();
     const deltaTime = currentTime - lastDragTime;
@@ -661,17 +674,10 @@ function handleTouchMove(e) {
 
 function handleTouchEnd(e) {
     if (!touchMoved) {
-        // Only handle click if we haven't dragged
+        const rect = canvas.getBoundingClientRect();
         const localX = lastMouseX - rect.left;
         const localY = lastMouseY - rect.top;
         
-        // Check for menu clicks first
-        if (handleMenuClick(lastMouseX, lastMouseY)) {
-            isDragging = false;
-            return;
-        }
-        
-        // Check for vertex clicks
         vertexInfo.forEach((vertex, index) => {
             if (vertex.screenPosition) {
                 const dx = localX - vertex.screenPosition.x;
@@ -687,6 +693,7 @@ function handleTouchEnd(e) {
     }
     
     isDragging = false;
+    touchMoved = false;
     setRotationState(false);
     
     if (activeVertex === null) {
@@ -737,6 +744,17 @@ function createLegend() {
     document.body.appendChild(legend);
 }
 
+function createDebugButton() {
+    const debugButton = document.createElement('div');
+    debugButton.className = 'debug-button';
+    debugButton.textContent = 'show collisions';  // New text
+    debugButton.addEventListener('click', () => {
+        debugMode = !debugMode;
+        debugButton.classList.toggle('active', debugMode);
+    });
+    document.body.appendChild(debugButton);
+}
+
 function initialize() {
     canvas = document.getElementById('starCanvas');
     ctx = canvas.getContext('2d');
@@ -751,16 +769,23 @@ function initialize() {
     window.addEventListener('mouseup', handleMouseUp);
     window.addEventListener('mouseleave', handleMouseUp);
     
-    // Update touch event listeners
+    // Remove old touch listeners and add new ones
+    canvas.removeEventListener('touchstart', handleTouchStart);
+    canvas.removeEventListener('touchmove', handleTouchMove);
+    canvas.removeEventListener('touchend', handleTouchEnd);
+    canvas.removeEventListener('touchcancel', handleTouchEnd);
+    
     canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
     canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
     canvas.addEventListener('touchend', handleTouchEnd);
     canvas.addEventListener('touchcancel', handleTouchEnd);
     
-    // Prevent default touch behaviors on the canvas
+    // Prevent default touch behaviors
+    document.body.style.touchAction = 'none';
     canvas.style.touchAction = 'none';
     
     createLegend();
+    createDebugButton();
 }
 
 // ============================================================================
@@ -803,23 +828,104 @@ function applyRotation() {
 function updateMenuPosition() {
     if (activeMenu) {
         const vertexIndex = parseInt(activeMenu.dataset.vertexIndex);
-        const vertex = vertexInfo[vertexIndex];
-        const rotated = rotate3D(vertex.point, rotationX, rotationY, rotationZ);
+        const menuX = parseFloat(activeMenu.dataset.x);
+        const menuY = parseFloat(activeMenu.dataset.y);
+        const menuZ = parseFloat(activeMenu.dataset.z);
+        
+        const rotated = rotate3D([menuX, menuY, menuZ], rotationX, rotationY, rotationZ);
         const scale = PERSPECTIVE.scale(rotated[2]);
         
-        // Calculate direction vector from center to point
-        const dx = rotated[0];
-        const dy = rotated[1];
-        const length = Math.sqrt(dx * dx + dy * dy);
-        
-        // Position menu along this vector
-        const menuDistance = 60; // Same distance as in handleClick
-        const screenX = (rotated[0] + (dx / length) * menuDistance) * scale + canvas.width / 2;
-        const screenY = (rotated[1] + (dy / length) * menuDistance) * scale + canvas.height / 2;
+        const screenX = rotated[0] * scale + canvas.width / 2;
+        const screenY = rotated[1] * scale + canvas.height / 2;
         
         activeMenu.style.left = `${screenX}px`;
         activeMenu.style.top = `${screenY}px`;
+        activeMenu.style.transform = `translateX(-50%) translateY(-50%) scaleY(0.8)`;
     }
+}
+
+function drawNotifications() {
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = '12px "Space Mono", monospace';
+    
+    // Update and draw each notification
+    notifications = notifications.filter(notif => {
+        notif.opacity -= 0.01; // Fade out speed
+        notif.y -= 0.5; // Rise speed
+        
+        if (notif.opacity <= 0) return false;
+        
+        ctx.fillStyle = `rgba(255, 255, 255, ${notif.opacity})`;
+        ctx.fillText(
+            notif.text, 
+            canvas.width / 2, 
+            canvas.height - 40 + notif.y
+        );
+        
+        return true;
+    });
+    
+    ctx.restore();
+}
+
+function drawDebug() {
+    if (!debugMode) return;
+    
+    ctx.save();
+    
+    // Draw menu item hit areas
+    if (activeMenu) {
+        menuItemPositions.forEach(item => {
+            const bounds = item.getBounds();
+            ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(
+                bounds.left,
+                bounds.top,
+                bounds.right - bounds.left,
+                bounds.bottom - bounds.top
+            );
+        });
+    }
+    
+    // Draw vertex hit areas
+    vertexInfo.forEach(vertex => {
+        if (vertex.screenPosition) {
+            ctx.strokeStyle = 'rgba(0, 255, 0, 0.5)';
+            ctx.beginPath();
+            ctx.arc(
+                vertex.screenPosition.x,
+                vertex.screenPosition.y,
+                vertex.screenPosition.radius,
+                0,
+                Math.PI * 2
+            );
+            ctx.stroke();
+            
+            // Draw extended touch area
+            ctx.strokeStyle = 'rgba(0, 255, 0, 0.2)';
+            ctx.beginPath();
+            ctx.arc(
+                vertex.screenPosition.x,
+                vertex.screenPosition.y,
+                vertex.screenPosition.radius * 1.5,
+                0,
+                Math.PI * 2
+            );
+            ctx.stroke();
+        }
+    });
+    
+    // Draw last touch/click position
+    if (lastMouseX && lastMouseY) {
+        ctx.strokeStyle = 'rgba(255, 255, 0, 0.8)';
+        ctx.beginPath();
+        ctx.arc(lastMouseX, lastMouseY, 5, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+    
+    ctx.restore();
 }
 
 function draw() {
@@ -830,6 +936,8 @@ function draw() {
     drawVertexNumbers();
     drawVertexIndicator();
     updateMenuPosition();
+    drawNotifications();
+    drawDebug();
     
     updateRotation();
     requestAnimationFrame(draw);
@@ -851,6 +959,7 @@ const menuConfigs = {
             { 
                 label: 'Desktop version', 
                 action: () => {
+                    showNotification('Opening Desktop Version...');
                     const win = window.open();
                     if (win) {
                         win.opener = null;
@@ -861,6 +970,7 @@ const menuConfigs = {
             { 
                 label: 'Online version', 
                 action: () => {
+                    showNotification('Opening Online Version...');
                     const win = window.open();
                     if (win) {
                         win.opener = null;
@@ -876,6 +986,7 @@ const menuConfigs = {
             { 
                 label: 'documents', 
                 action: () => {
+                    showNotification('Opening Documents...');
                     const win = window.open();
                     if (win) {
                         win.opener = null;
@@ -883,7 +994,13 @@ const menuConfigs = {
                     }
                 }
             },
-            { label: 'incomplete', action: () => console.log('Not complete...') }
+            { 
+                label: 'incomplete', 
+                action: () => {
+                    console.log('Not complete...');
+                    showNotification('Not complete...');
+                }
+            }
         ]
     },
     config: {
@@ -892,6 +1009,7 @@ const menuConfigs = {
             { 
                 label: 'dot files', 
                 action: () => {
+                    showNotification('Opening Dot Files...');
                     const win = window.open();
                     if (win) {
                         win.opener = null;
@@ -904,8 +1022,20 @@ const menuConfigs = {
     media: {
         title: 'MEDIA',
         items: [
-            { label: 'incomplete', action: () => console.log('Not complete...') },
-            { label: 'incomplete', action: () => console.log('Not complete...') }
+            { 
+                label: 'incomplete', 
+                action: () => {
+                    console.log('Not complete...');
+                    showNotification('Not complete...');
+                }
+            },
+            { 
+                label: 'incomplete', 
+                action: () => {
+                    console.log('Not complete...');
+                    showNotification('Not complete...');
+                }
+            }
         ]
     },
     links: {
@@ -914,6 +1044,7 @@ const menuConfigs = {
             { 
                 label: 'x.com', 
                 action: () => {
+                    showNotification('Opening X.com Profile...');
                     const win = window.open();
                     if (win) {
                         win.opener = null;
@@ -924,6 +1055,7 @@ const menuConfigs = {
             { 
                 label: 'itch.io', 
                 action: () => {
+                    showNotification('Opening Itch.io Profile...');
                     const win = window.open();
                     if (win) {
                         win.opener = null;
@@ -934,6 +1066,7 @@ const menuConfigs = {
             { 
                 label: 'youtube.com', 
                 action: () => {
+                    showNotification('Opening YouTube Channel...');
                     const win = window.open();
                     if (win) {
                         win.opener = null;
@@ -946,9 +1079,27 @@ const menuConfigs = {
     null: {
         title: 'NULL',
         items: [
-            { label: 'incomplete', action: () => console.log('Not complete...') },
-            { label: 'incomplete', action: () => console.log('Not complete...') },
-            { label: 'incomplete', action: () => console.log('Not complete...') }
+            { 
+                label: 'incomplete', 
+                action: () => {
+                    console.log('Not complete...');
+                    showNotification('Not complete...');
+                }
+            },
+            { 
+                label: 'incomplete', 
+                action: () => {
+                    console.log('Not complete...');
+                    showNotification('Not complete...');
+                }
+            },
+            { 
+                label: 'incomplete', 
+                action: () => {
+                    console.log('Not complete...');
+                    showNotification('Not complete...');
+                }
+            }
         ]
     }
 };
@@ -962,10 +1113,34 @@ function createVertexMenu(index) {
     const menu = document.createElement('div');
     menu.className = 'vertex-menu';
     menu.id = `vertex-menu-${index}`;
-    menuItemPositions = [];  // Reset positions array
+    menuItemPositions = [];
     
     const config = getMenuConfig(index);
+    const vertex = vertexInfo[index];
     
+    // Calculate 3D position for menu
+    const rotated = rotate3D(vertex.point, rotationX, rotationY, rotationZ);
+    const scale = PERSPECTIVE.scale(rotated[2]);
+    
+    // Calculate direction vector from center to point (matching Roman numeral logic)
+    const dx = rotated[0];
+    const dy = rotated[1];
+    const length = Math.sqrt(dx * dx + dy * dy);
+    
+    // Store menu's 3D position for hit testing
+    // Increased distance (original Roman numerals use 20, we'll use 120 for menus)
+    const menuDistance = 120 * STAR_SCALE;
+    const menuPos = {
+        x: vertex.point[0] + (vertex.point[0] / length) * menuDistance,
+        y: vertex.point[1] + (vertex.point[1] / length) * menuDistance,
+        z: vertex.point[2] + (vertex.point[2] / length) * menuDistance
+    };
+    
+    menu.dataset.x = menuPos.x;
+    menu.dataset.y = menuPos.y;
+    menu.dataset.z = menuPos.z;
+    
+    // Create menu content
     const header = document.createElement('div');
     header.className = 'vertex-menu-header';
     header.textContent = config.title;
@@ -978,16 +1153,21 @@ function createVertexMenu(index) {
         menuItem.dataset.index = itemIndex;
         menu.appendChild(menuItem);
         
-        // Store the item's action for later use
+        // Store item's action and getBounds without 3D rotation
         menuItemPositions.push({
             action: item.action,
+            element: menuItem,
             getBounds: () => {
-                const rect = menuItem.getBoundingClientRect();
+                const itemRect = menuItem.getBoundingClientRect();
+                // Use smaller padding, especially horizontally
+                const paddingVertical = 3;   // Reduced from 5
+                const paddingHorizontal = 2;  // Even smaller for horizontal
                 return {
-                    left: rect.left,
-                    right: rect.right,
-                    top: rect.top,
-                    bottom: rect.bottom
+                    left: itemRect.left - paddingHorizontal,
+                    right: itemRect.right + paddingHorizontal,
+                    top: itemRect.top - paddingVertical,
+                    bottom: itemRect.bottom + paddingVertical,
+                    z: parseFloat(menu.dataset.z)
                 };
             }
         });
@@ -1040,7 +1220,7 @@ function handleVertexClick(index) {
     const dy = rotated[1];
     const length = Math.sqrt(dx * dx + dy * dy);
     
-    const menuDistance = 60;
+    const menuDistance = 120 * STAR_SCALE;
     const screenX = (rotated[0] + (dx / length) * menuDistance) * scale + canvas.width / 2;
     const screenY = (rotated[1] + (dy / length) * menuDistance) * scale + canvas.height / 2;
     
@@ -1065,4 +1245,18 @@ function activatePoint(index) {
     document.querySelectorAll('.legend-item').forEach((item, i) => {
         item.classList.toggle('active', i === index);
     });
+}
+
+function showNotification(text) {
+    const notification = {
+        text,
+        opacity: 1,
+        y: 0,
+        id: Date.now()
+    };
+    
+    notifications.push(notification);
+    if (notifications.length > 5) { // Limit stacked notifications
+        notifications.shift();
+    }
 }
