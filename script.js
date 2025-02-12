@@ -15,7 +15,7 @@ const STAR_SCALE = (() => {
     const baseScale = 0.6;
     if (isMobileDevice) {
         const smallerDimension = Math.min(window.innerWidth, window.innerHeight);
-        return baseScale * (smallerDimension / 1000);
+        return baseScale * (smallerDimension / 600);
     }
     return baseScale;
 })();
@@ -28,7 +28,7 @@ const PERSPECTIVE = {
         const baseDistance = 1000;
         if (isMobileDevice) {
             const smallerDimension = Math.min(window.innerWidth, window.innerHeight);
-            return baseDistance * (smallerDimension / 1000);
+            return baseDistance * (smallerDimension / 600);
         }
         return baseDistance;
     })(),
@@ -544,9 +544,9 @@ function handleResize() {
     // Update scaling factors based on new viewport size
     if (isMobileDevice) {
         const smallerDimension = Math.min(viewportWidth, viewportHeight);
-        PERSPECTIVE.distance = 1000 * (smallerDimension / 1000);
+        PERSPECTIVE.distance = 1000 * (smallerDimension / 600);
         // Update current scale
-        const newScale = 0.6 * (smallerDimension / 1000);
+        const newScale = 0.6 * (smallerDimension / 600);
         
         // Rescale points using ratio of new to current scale
         const scaleRatio = newScale / currentScale;
@@ -1239,18 +1239,22 @@ function createVertexMenu(index) {
         menuItem.dataset.index = itemIndex;
         menu.appendChild(menuItem);
         
-        // Store item's action and getBounds without 3D rotation
+        // Update collision box logic
         menuItemPositions.push({
             action: item.action,
             element: menuItem,
             getBounds: () => {
                 const itemRect = menuItem.getBoundingClientRect();
-                const padding = isMobileDevice ? 15 : 3;  // Larger padding for mobile
+                // Reduce padding for mobile to prevent overlap
+                const padding = isMobileDevice ? 4 : 3;
+                // Add vertical spacing between items on mobile
+                const verticalPadding = isMobileDevice ? 2 : padding;
+                
                 return {
                     left: itemRect.left - padding,
                     right: itemRect.right + padding,
-                    top: itemRect.top - padding,
-                    bottom: itemRect.bottom + padding,
+                    top: itemRect.top - verticalPadding,
+                    bottom: itemRect.bottom + verticalPadding,
                     z: parseFloat(menu.dataset.z)
                 };
             }
