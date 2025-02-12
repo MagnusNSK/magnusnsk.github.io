@@ -148,8 +148,11 @@ function unprojectPoint(screenX, screenY, depth) {
 function createRipple(x, y) {
     const ripple = document.createElement('div');
     ripple.className = 'ripple';
-    ripple.style.left = `${x}px`;
-    ripple.style.top = `${y}px`;
+    const rect = canvas.getBoundingClientRect(); // Get fresh bounds
+    
+    // Adjust ripple position relative to canvas
+    ripple.style.left = `${x + rect.left}px`;
+    ripple.style.top = `${y + rect.top - window.scrollY}px`; // Subtract scroll offset
     document.body.appendChild(ripple);
     
     ripples.push(ripple);
@@ -186,27 +189,33 @@ const words = [
 const vertexInfo = [
     { 
         point: [0, 250, 0].map(x => x * STAR_SCALE),
-        words: ["one-1", "One-1", "ONE-1", "oNE-1", "onE-1"]
+        words: ["one-1", "One-1", "ONE-1", "oNE-1", "onE-1"],
+        subtitle: "tools"
     },
     { 
         point: [0, -250, 0].map(x => x * STAR_SCALE),
-        words: ["two-2", "Two-2", "TWO-2", "tWOd-2", "twO-2"]
+        words: ["two-2", "Two-2", "TWO-2", "tWOd-2", "twO-2"],
+        subtitle: "about"
     },
     { 
         point: [250, 0, 0].map(x => x * STAR_SCALE),
-        words: ["three-3", "Three-3", "THREE-3", "thREE-3", "thrEE-3"]
+        words: ["three-3", "Three-3", "THREE-3", "thREE-3", "thrEE-3"],
+        subtitle: "config"
     },
     { 
         point: [-250, 0, 0].map(x => x * STAR_SCALE),
-        words: ["four-4", "Four-4", "FOUR-4", "foUR-4", "fouR-4"]
+        words: ["four-4", "Four-4", "FOUR-4", "foUR-4", "fouR-4"],
+        subtitle: "media"
     },
     { 
         point: [0, 0, 250].map(x => x * STAR_SCALE),
-        words: ["five-5", "Five-5", "FIVE-5", "fiVE-5", "fivE-5"]
+        words: ["five-5", "Five-5", "FIVE-5", "fiVE-5", "fivE-5"],
+        subtitle: "links"
     },
     { 
         point: [0, 0, -250].map(x => x * STAR_SCALE),
-        words: ["six-6", "Six-6", "SIX-6", "sIX-6", "siX-6"]
+        words: ["six-6", "Six-6", "SIX-6", "sIX-6", "siX-6"],
+        subtitle: "null"
     }
 ].map(info => ({
     ...info,
@@ -222,7 +231,7 @@ class FloatingWord {
         this.availableWords = words;
         this.word = this.getRandomWord();
         this.repositionInSphere();
-        this.changeTimer = Math.random() * 200 + 100; // Increased timer for more stability
+        this.changeTimer = Math.random() * 200 + 100;
         this.font = '10px "Space Mono", monospace';
     }
 
@@ -234,34 +243,31 @@ class FloatingWord {
         const theta = Math.random() * 2 * Math.PI;
         const phi = Math.acos((Math.random() * 2) - 1);
         
-        // Create stronger bias towards the center using a higher power curve
-        const radiusBias = Math.pow(Math.random(), 2.5); // Increased power for stronger center bias
+        const radiusBias = Math.pow(Math.random(), 2.5);
         const minRadius = 100 * STAR_SCALE;
-        const maxRadius = 500 * STAR_SCALE; // Increased max radius
+        const maxRadius = 500 * STAR_SCALE;
         const radius = minRadius + (maxRadius - minRadius) * radiusBias;
         
         this.x = radius * Math.sin(phi) * Math.cos(theta);
         this.y = radius * Math.sin(phi) * Math.sin(theta);
         this.z = radius * Math.cos(phi);
         
-        // Adjust opacity based on distance from center with sharper falloff
         const distanceFromCenter = Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
         const maxDistance = maxRadius;
         const normalizedDistance = distanceFromCenter / maxDistance;
         
-        // Sharper opacity falloff
-        this.baseOpacity = Math.max(0.1, 0.8 - Math.pow(normalizedDistance, 1.5));
+        // Reduced base opacity values
+        this.baseOpacity = Math.max(0.05, 0.4 - Math.pow(normalizedDistance, 1.5));  // Reduced from 0.1, 0.8
         
-        // Slower, more subtle fade
         this.fadeDirection = Math.random() < 0.5 ? -1 : 1;
-        this.fadeSpeed = 0.0005 + Math.random() * 0.0005; // Much slower fade
+        this.fadeSpeed = 0.0005 + Math.random() * 0.0005;
         this.opacity = this.baseOpacity;
     }
 
     update() {
         this.opacity += this.fadeDirection * this.fadeSpeed;
-        const minOpacity = Math.max(0.1, this.baseOpacity - 0.05);
-        const maxOpacity = Math.min(0.8, this.baseOpacity + 0.05);
+        const minOpacity = Math.max(0.05, this.baseOpacity - 0.05);  // Reduced from 0.1
+        const maxOpacity = Math.min(0.4, this.baseOpacity + 0.05);   // Reduced from 0.8
         
         if (this.opacity <= minOpacity || this.opacity >= maxOpacity) {
             this.fadeDirection *= -1;
@@ -271,7 +277,7 @@ class FloatingWord {
         this.changeTimer--;
         if (this.changeTimer <= 0) {
             this.currentWord = this.getRandomWord();
-            this.changeTimer = Math.random() * 200 + 100; // Longer word display time
+            this.changeTimer = Math.random() * 200 + 100;
         }
     }
 
@@ -310,7 +316,6 @@ function drawConnections() {
 }
 
 function drawVertexNumbers() {
-    ctx.font = '10px "Space Mono", monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     
@@ -329,8 +334,16 @@ function drawVertexNumbers() {
         const y = (rotated[1] + (dy / length) * extension) * scale + canvas.height / 2;
         
         const depthOpacity = ((1000 + rotated[2]) / 2000) * 0.9 + 0.1;
+        
+        // Draw Roman numeral
+        ctx.font = '10px "Space Mono", monospace';
         ctx.fillStyle = `rgba(255, 255, 255, ${depthOpacity})`;
-        ctx.fillText(toRoman(index + 1), x, y);
+        ctx.fillText(toRoman(index + 1), x, y - 6);
+        
+        // Draw subtitle
+        ctx.font = '8px "Space Mono", monospace';
+        ctx.fillStyle = `rgba(255, 255, 255, ${depthOpacity * 0.7})`; // Slightly more transparent
+        ctx.fillText(vertex.subtitle, x, y + 6);
     });
 }
 
@@ -587,13 +600,18 @@ function startAutoRotationTimer() {
 function handleTouchStart(e) {
     e.preventDefault();
     const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect(); // Get fresh bounds
+    
+    // Adjust touch coordinates relative to canvas
+    const touchX = touch.clientX - rect.left;
+    const touchY = touch.clientY - rect.top + window.scrollY; // Add scroll offset
     
     touchMoved = false;
     isDragging = true;
-    touchStartX = touch.clientX;
-    touchStartY = touch.clientY;
-    lastMouseX = touch.clientX;
-    lastMouseY = touch.clientY;
+    touchStartX = touchX;
+    touchStartY = touchY;
+    lastMouseX = touchX;
+    lastMouseY = touchY;
     lastDragTime = Date.now();
     dragVelocityX = 0;
     dragVelocityY = 0;
@@ -607,14 +625,18 @@ function handleTouchStart(e) {
 function handleTouchMove(e) {
     e.preventDefault();
     const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect(); // Get fresh bounds
     
-    // Calculate movement distance
+    // Adjust touch coordinates relative to canvas
+    const touchX = touch.clientX - rect.left;
+    const touchY = touch.clientY - rect.top + window.scrollY; // Add scroll offset
+    
+    // Calculate movement distance using adjusted coordinates
     const moveDistance = Math.sqrt(
-        Math.pow(touch.clientX - touchStartX, 2) + 
-        Math.pow(touch.clientY - touchStartY, 2)
+        Math.pow(touchX - touchStartX, 2) + 
+        Math.pow(touchY - touchStartY, 2)
     );
     
-    // If we've moved more than a small threshold, mark as dragging
     if (moveDistance > 5) {
         touchMoved = true;
     }
@@ -625,15 +647,15 @@ function handleTouchMove(e) {
     const deltaTime = currentTime - lastDragTime;
     
     if (deltaTime > 0) {
-        dragVelocityX = (touch.clientX - lastMouseX) / deltaTime;
-        dragVelocityY = (touch.clientY - lastMouseY) / deltaTime;
+        dragVelocityX = (touchX - lastMouseX) / deltaTime;
+        dragVelocityY = (touchY - lastMouseY) / deltaTime;
     }
     
-    rotationY += (touch.clientX - lastMouseX) * DRAG_SENSITIVITY * 0.8;
-    rotationX += (touch.clientY - lastMouseY) * DRAG_SENSITIVITY * 0.8;
+    rotationY += (touchX - lastMouseX) * DRAG_SENSITIVITY * 0.8;
+    rotationX += (touchY - lastMouseY) * DRAG_SENSITIVITY * 0.8;
     
-    lastMouseX = touch.clientX;
-    lastMouseY = touch.clientY;
+    lastMouseX = touchX;
+    lastMouseY = touchY;
     lastDragTime = currentTime;
 }
 
@@ -827,12 +849,22 @@ const menuConfigs = {
         title: 'TOOLS',
         items: [
             { 
-                label: 'nsk utility', 
+                label: 'Desktop version', 
                 action: () => {
                     const win = window.open();
                     if (win) {
                         win.opener = null;
                         win.location = 'https://github.com/MagnusNSK/nsk-utility';
+                    }
+                }
+            },
+            { 
+                label: 'Online version', 
+                action: () => {
+                    const win = window.open();
+                    if (win) {
+                        win.opener = null;
+                        win.location = 'tools/time-tracker.html';
                     }
                 }
             }
