@@ -509,8 +509,12 @@ function handleVertexHover(closestVertex) {
 }
 
 function handleResize() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    const pixelRatio = window.devicePixelRatio || 1;
+    canvas.width = window.innerWidth * pixelRatio;
+    canvas.height = window.innerHeight * pixelRatio;
+    canvas.style.width = window.innerWidth + 'px';
+    canvas.style.height = window.innerHeight + 'px';
+    ctx.scale(pixelRatio, pixelRatio);
     rect = canvas.getBoundingClientRect();
     
     // Clean up active menu on resize
@@ -786,6 +790,14 @@ function initialize() {
     
     createLegend();
     createDebugButton();
+
+    // Add proper pixel ratio scaling for canvas
+    const pixelRatio = window.devicePixelRatio || 1;
+    canvas.width = window.innerWidth * pixelRatio;
+    canvas.height = window.innerHeight * pixelRatio;
+    canvas.style.width = window.innerWidth + 'px';
+    canvas.style.height = window.innerHeight + 'px';
+    ctx.scale(pixelRatio, pixelRatio);
 }
 
 // ============================================================================
@@ -1128,8 +1140,8 @@ function createVertexMenu(index) {
     const length = Math.sqrt(dx * dx + dy * dy);
     
     // Store menu's 3D position for hit testing
-    // Increased distance (original Roman numerals use 20, we'll use 120 for menus)
-    const menuDistance = 120 * STAR_SCALE;
+    // Adjust menu distance for mobile
+    const menuDistance = isMobileDevice ? 180 * STAR_SCALE : 120 * STAR_SCALE;
     const menuPos = {
         x: vertex.point[0] + (vertex.point[0] / length) * menuDistance,
         y: vertex.point[1] + (vertex.point[1] / length) * menuDistance,
@@ -1159,14 +1171,12 @@ function createVertexMenu(index) {
             element: menuItem,
             getBounds: () => {
                 const itemRect = menuItem.getBoundingClientRect();
-                // Use smaller padding, especially horizontally
-                const paddingVertical = 3;   // Reduced from 5
-                const paddingHorizontal = 2;  // Even smaller for horizontal
+                const padding = isMobileDevice ? 15 : 3;  // Larger padding for mobile
                 return {
-                    left: itemRect.left - paddingHorizontal,
-                    right: itemRect.right + paddingHorizontal,
-                    top: itemRect.top - paddingVertical,
-                    bottom: itemRect.bottom + paddingVertical,
+                    left: itemRect.left - padding,
+                    right: itemRect.right + padding,
+                    top: itemRect.top - padding,
+                    bottom: itemRect.bottom + padding,
                     z: parseFloat(menu.dataset.z)
                 };
             }
