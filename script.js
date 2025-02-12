@@ -1,7 +1,12 @@
 // ============================================================================
+// Device Detection
+// ============================================================================
+const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
+
+// ============================================================================
 // Configuration Constants
 // ============================================================================
-const STAR_SCALE = 0.6;
+const STAR_SCALE = isMobileDevice ? 1.2 : 0.6;
 const ROTATION_SPEEDS = {
     default: { x: 0.005, y: 0.007, z: 0.003 },
     stopped: { x: 0, y: 0, z: 0 }
@@ -86,7 +91,6 @@ let touchMoved = false;
 let menuPlaneZ = 0; // Will store the Z-depth of the active menu
 let notifications = [];
 let debugMode = false;
-let isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
 
 // ============================================================================
 // Utility Functions
@@ -236,7 +240,7 @@ class FloatingWord {
         this.word = this.getRandomWord();
         this.repositionInSphere();
         this.changeTimer = Math.random() * 200 + 100;
-        this.font = '10px "Space Mono", monospace';
+        this.font = isMobileDevice ? '14px "Space Mono", monospace' : '10px "Space Mono", monospace';
     }
 
     getRandomWord() {
@@ -380,7 +384,7 @@ function drawVertexIndicator() {
 
 function drawFloatingWords() {
     ctx.textAlign = 'center';
-    ctx.font = '10px "Space Mono", monospace';
+    ctx.font = isMobileDevice ? '14px "Space Mono", monospace' : '10px "Space Mono", monospace';
     
     const sortedWords = floatingWords.map(fw => {
         const rotated = rotate3D([fw.x, fw.y, fw.z], rotationX, rotationY, rotationZ);
@@ -852,7 +856,7 @@ function updateMenuPosition() {
         
         activeMenu.style.left = `${screenX}px`;
         activeMenu.style.top = `${screenY}px`;
-        activeMenu.style.transform = `translateX(-50%) translateY(-50%) scaleY(0.8)`;
+        activeMenu.style.transform = `translateX(-50%) translateY(-50%)`;
     }
 }
 
@@ -1139,9 +1143,10 @@ function createVertexMenu(index) {
     const dy = rotated[1];
     const length = Math.sqrt(dx * dx + dy * dy);
     
-    // Store menu's 3D position for hit testing
-    // Adjust menu distance for mobile
-    const menuDistance = isMobileDevice ? 180 * STAR_SCALE : 120 * STAR_SCALE;
+    // Adjust menu distance based on device and star scale
+    const menuDistance = isMobileDevice ? 
+        240 * STAR_SCALE : // Increased distance for mobile
+        120 * STAR_SCALE;
     const menuPos = {
         x: vertex.point[0] + (vertex.point[0] / length) * menuDistance,
         y: vertex.point[1] + (vertex.point[1] / length) * menuDistance,
@@ -1171,7 +1176,7 @@ function createVertexMenu(index) {
             element: menuItem,
             getBounds: () => {
                 const itemRect = menuItem.getBoundingClientRect();
-                const padding = isMobileDevice ? 15 : 3;  // Larger padding for mobile
+                const padding = isMobileDevice ? 25 : 3;  // Much larger padding for mobile
                 return {
                     left: itemRect.left - padding,
                     right: itemRect.right + padding,
