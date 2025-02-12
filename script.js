@@ -1,24 +1,45 @@
 // ============================================================================
 // Device Detection
 // ============================================================================
-const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
+const isMobileDevice = (() => {
+    const userAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const touchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    const smallScreen = window.innerWidth <= 768;
+    return userAgent || (touchDevice && smallScreen);
+})();
 
 // ============================================================================
 // Configuration Constants
 // ============================================================================
-const STAR_SCALE = isMobileDevice ? 1.2 : 0.6;
+const STAR_SCALE = (() => {
+    const baseScale = 0.6;
+    if (isMobileDevice) {
+        const smallerDimension = Math.min(window.innerWidth, window.innerHeight);
+        return baseScale * (smallerDimension / 1000);
+    }
+    return baseScale;
+})();
 const ROTATION_SPEEDS = {
     default: { x: 0.005, y: 0.007, z: 0.003 },
     stopped: { x: 0, y: 0, z: 0 }
 };
 const PERSPECTIVE = {
-    distance: 1000,
-    scale: (z) => PERSPECTIVE.distance / (PERSPECTIVE.distance + z)
+    distance: (() => {
+        const baseDistance = 1000;
+        if (isMobileDevice) {
+            const smallerDimension = Math.min(window.innerWidth, window.innerHeight);
+            return baseDistance * (smallerDimension / 1000);
+        }
+        return baseDistance;
+    })(),
+    scale: function(z) {
+        return this.distance / (this.distance + z);
+    }
 };
 const DRAG_SENSITIVITY = 0.005;
 const MOMENTUM_DECAY = 0.95;
 const AUTO_ROTATION_DELAY = 2500;
-const ROTATION_LERP_SPEED = 0.05;  // Controls how fast rotation changes occur
+const ROTATION_LERP_SPEED = 0.05;
 
 // ============================================================================
 // Star Structure Definition
@@ -88,9 +109,12 @@ let ripples = [];
 let wordCloudLocked = false;
 let menuItemPositions = [];
 let touchMoved = false;
-let menuPlaneZ = 0; // Will store the Z-depth of the active menu
+let menuPlaneZ = 0;
 let notifications = [];
 let debugMode = false;
+let viewportWidth = window.innerWidth;
+let viewportHeight = window.innerHeight;
+let currentScale = STAR_SCALE;
 
 // ============================================================================
 // Utility Functions
@@ -147,8 +171,8 @@ function distanceToLine(point, lineStart, lineEnd) {
 function unprojectPoint(screenX, screenY, depth) {
     const scale = PERSPECTIVE.scale(depth);
     return [
-        (screenX - canvas.width / 2) / scale,
-        (screenY - canvas.height / 2) / scale,
+        (screenX - viewportWidth / 2) / scale,
+        (screenY - viewportHeight / 2) / scale,
         depth
     ];
 }
@@ -240,7 +264,7 @@ class FloatingWord {
         this.word = this.getRandomWord();
         this.repositionInSphere();
         this.changeTimer = Math.random() * 200 + 100;
-        this.font = isMobileDevice ? '14px "Space Mono", monospace' : '10px "Space Mono", monospace';
+        this.font = '10px "Space Mono", monospace';
     }
 
     getRandomWord() {
@@ -311,10 +335,10 @@ function drawConnections() {
         const scale1 = PERSPECTIVE.scale(p1[2]);
         const scale2 = PERSPECTIVE.scale(p2[2]);
         
-        const x1 = p1[0] * scale1 + canvas.width / 2;
-        const y1 = p1[1] * scale1 + canvas.height / 2;
-        const x2 = p2[0] * scale2 + canvas.width / 2;
-        const y2 = p2[1] * scale2 + canvas.height / 2;
+        const x1 = p1[0] * scale1 + viewportWidth / 2;
+        const y1 = p1[1] * scale1 + viewportHeight / 2;
+        const x2 = p2[0] * scale2 + viewportWidth / 2;
+        const y2 = p2[1] * scale2 + viewportHeight / 2;
         
         ctx.beginPath();
         ctx.moveTo(x1, y1);
@@ -336,8 +360,8 @@ function drawVertexNumbers() {
         const length = Math.sqrt(dx * dx + dy * dy);
         
         const extension = 20 * scale;
-        const x = (rotated[0] + (dx / length) * extension) * scale + canvas.width / 2;
-        const y = (rotated[1] + (dy / length) * extension) * scale + canvas.height / 2;
+        const x = (rotated[0] + (dx / length) * extension) * scale + viewportWidth / 2;
+        const y = (rotated[1] + (dy / length) * extension) * scale + viewportHeight / 2;
         
         const depthOpacity = ((1000 + rotated[2]) / 2000) * 0.9 + 0.1;
         
@@ -364,8 +388,8 @@ function drawVertexIndicator() {
     vertexInfo.forEach((vertex, index) => {
         const rotated = rotate3D(vertex.point, rotationX, rotationY, rotationZ);
         const scale = PERSPECTIVE.scale(rotated[2]);
-        const screenX = rotated[0] * scale + canvas.width / 2;
-        const screenY = rotated[1] * scale + canvas.height / 2;
+        const screenX = rotated[0] * scale + viewportWidth / 2;
+        const screenY = rotated[1] * scale + viewportHeight / 2;
         
         // Store point data for click detection
         vertex.screenPosition = { x: screenX, y: screenY, radius: 20 * scale };
@@ -384,7 +408,7 @@ function drawVertexIndicator() {
 
 function drawFloatingWords() {
     ctx.textAlign = 'center';
-    ctx.font = isMobileDevice ? '14px "Space Mono", monospace' : '10px "Space Mono", monospace';
+    ctx.font = '10px "Space Mono", monospace';
     
     const sortedWords = floatingWords.map(fw => {
         const rotated = rotate3D([fw.x, fw.y, fw.z], rotationX, rotationY, rotationZ);
@@ -393,8 +417,8 @@ function drawFloatingWords() {
     
     sortedWords.forEach(({ fw, rotated }) => {
         const scale = PERSPECTIVE.scale(rotated[2]);
-        const x = rotated[0] * scale + canvas.width / 2;
-        const y = rotated[1] * scale + canvas.height / 2;
+        const x = rotated[0] * scale + viewportWidth / 2;
+        const y = rotated[1] * scale + viewportHeight / 2;
         
         const depthOpacity = ((1000 + rotated[2]) / 2000) * 0.9 + 0.1;
         ctx.fillStyle = `rgba(255, 255, 255, ${fw.opacity * depthOpacity})`;
@@ -514,11 +538,35 @@ function handleVertexHover(closestVertex) {
 
 function handleResize() {
     const pixelRatio = window.devicePixelRatio || 1;
-    canvas.width = window.innerWidth * pixelRatio;
-    canvas.height = window.innerHeight * pixelRatio;
-    canvas.style.width = window.innerWidth + 'px';
-    canvas.style.height = window.innerHeight + 'px';
+    viewportWidth = window.innerWidth;
+    viewportHeight = window.innerHeight;
+    
+    // Update scaling factors based on new viewport size
+    if (isMobileDevice) {
+        const smallerDimension = Math.min(viewportWidth, viewportHeight);
+        PERSPECTIVE.distance = 1000 * (smallerDimension / 1000);
+        // Update current scale
+        const newScale = 0.6 * (smallerDimension / 1000);
+        
+        // Rescale points using ratio of new to current scale
+        const scaleRatio = newScale / currentScale;
+        points.forEach((point, i) => {
+            points[i] = point.map(coord => coord * scaleRatio);
+        });
+        
+        currentScale = newScale;
+    }
+    
+    // Update canvas size
+    canvas.width = viewportWidth * pixelRatio;
+    canvas.height = viewportHeight * pixelRatio;
+    canvas.style.width = viewportWidth + 'px';
+    canvas.style.height = viewportHeight + 'px';
+    
+    // Scale context for retina/high DPI displays
     ctx.scale(pixelRatio, pixelRatio);
+    
+    // Update canvas bounds
     rect = canvas.getBoundingClientRect();
     
     // Clean up active menu on resize
@@ -584,10 +632,7 @@ function handleMouseDown(e) {
     dragVelocityX = 0;
     dragVelocityY = 0;
     isAutoRotating = false;
-    
-    if (autoRotationTimeout) {
-        clearTimeout(autoRotationTimeout);
-    }
+    clearTimeout(autoRotationTimeout);
 }
 
 function handleMouseUp() {
@@ -618,30 +663,48 @@ function startAutoRotationTimer() {
 function handleTouchStart(e) {
     e.preventDefault();
     const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect(); // Get fresh bounds
     
-    // Get fresh bounds and properly handle scroll
-    const rect = canvas.getBoundingClientRect();
-    const touchX = touch.clientX;
-    const touchY = touch.clientY;
+    const localX = touch.clientX - rect.left;
+    const localY = touch.clientY - rect.top;
     
     // Check for menu clicks first
-    if (handleMenuClick(touchX, touchY)) {
+    if (handleMenuClick(touch.clientX, touch.clientY)) {
         return;
     }
     
-    // Initialize touch tracking
-    touchMoved = false;
-    isDragging = true;
-    touchStartX = touchX;
-    touchStartY = touchY;
-    lastMouseX = touchX;
-    lastMouseY = touchY;
-    lastDragTime = Date.now();
-    dragVelocityX = 0;
-    dragVelocityY = 0;
-    isAutoRotating = false;
+    // Check for vertex clicks
+    let vertexClicked = false;
+    vertexInfo.forEach((vertex, index) => {
+        if (vertex.screenPosition) {
+            const dx = localX - vertex.screenPosition.x;
+            const dy = localY - vertex.screenPosition.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // Increase touch target size for mobile
+            const touchRadius = vertex.screenPosition.radius * (isMobileDevice ? 1.5 : 1);
+            
+            if (distance < touchRadius) {
+                createRipple(vertex.screenPosition.x, vertex.screenPosition.y);
+                handleVertexClick(index);
+                vertexClicked = true;
+                return;
+            }
+        }
+    });
     
-    if (autoRotationTimeout) {
+    if (!vertexClicked) {
+        // Initialize drag if no vertex was clicked
+        touchMoved = false;
+        isDragging = true;
+        touchStartX = touch.clientX;
+        touchStartY = touch.clientY;
+        lastMouseX = touch.clientX;
+        lastMouseY = touch.clientY;
+        lastDragTime = Date.now();
+        dragVelocityX = 0;
+        dragVelocityY = 0;
+        isAutoRotating = false;
         clearTimeout(autoRotationTimeout);
     }
 }
@@ -651,37 +714,41 @@ function handleTouchMove(e) {
     if (!isDragging) return;
     
     const touch = e.touches[0];
-    const touchX = touch.clientX;
-    const touchY = touch.clientY;
     
     // Calculate movement distance
     const moveDistance = Math.sqrt(
-        Math.pow(touchX - touchStartX, 2) + 
-        Math.pow(touchY - touchStartY, 2)
+        Math.pow(touch.clientX - touchStartX, 2) + 
+        Math.pow(touch.clientY - touchStartY, 2)
     );
     
-    if (moveDistance > 5) {
+    // Only consider it a drag if moved more than 10px
+    if (moveDistance > 10) {
         touchMoved = true;
+        
+        const currentTime = Date.now();
+        const deltaTime = currentTime - lastDragTime;
+        
+        if (deltaTime > 0) {
+            dragVelocityX = (touch.clientX - lastMouseX) / deltaTime;
+            dragVelocityY = (touch.clientY - lastMouseY) / deltaTime;
+        }
+        
+        // Reduce sensitivity for mobile
+        const mobileSensitivity = isMobileDevice ? 0.6 : 1;
+        rotationY += (touch.clientX - lastMouseX) * DRAG_SENSITIVITY * mobileSensitivity;
+        rotationX += (touch.clientY - lastMouseY) * DRAG_SENSITIVITY * mobileSensitivity;
+        
+        lastMouseX = touch.clientX;
+        lastMouseY = touch.clientY;
+        lastDragTime = currentTime;
     }
-    
-    const currentTime = Date.now();
-    const deltaTime = currentTime - lastDragTime;
-    
-    if (deltaTime > 0) {
-        dragVelocityX = (touchX - lastMouseX) / deltaTime;
-        dragVelocityY = (touchY - lastMouseY) / deltaTime;
-    }
-    
-    rotationY += (touchX - lastMouseX) * DRAG_SENSITIVITY * 0.8;
-    rotationX += (touchY - lastMouseY) * DRAG_SENSITIVITY * 0.8;
-    
-    lastMouseX = touchX;
-    lastMouseY = touchY;
-    lastDragTime = currentTime;
 }
 
 function handleTouchEnd(e) {
-    if (!touchMoved) {
+    e.preventDefault();
+    
+    if (!touchMoved && !isDragging) {
+        // Handle as a tap if we didn't move
         const rect = canvas.getBoundingClientRect();
         const localX = lastMouseX - rect.left;
         const localY = lastMouseY - rect.top;
@@ -692,7 +759,10 @@ function handleTouchEnd(e) {
                 const dy = localY - vertex.screenPosition.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
                 
-                if (distance < vertex.screenPosition.radius * 1.5) {
+                // Increase touch target size for mobile
+                const touchRadius = vertex.screenPosition.radius * (isMobileDevice ? 1.5 : 1);
+                
+                if (distance < touchRadius) {
                     createRipple(vertex.screenPosition.x, vertex.screenPosition.y);
                     handleVertexClick(index);
                 }
@@ -795,13 +865,13 @@ function initialize() {
     createLegend();
     createDebugButton();
 
-    // Add proper pixel ratio scaling for canvas
-    const pixelRatio = window.devicePixelRatio || 1;
-    canvas.width = window.innerWidth * pixelRatio;
-    canvas.height = window.innerHeight * pixelRatio;
-    canvas.style.width = window.innerWidth + 'px';
-    canvas.style.height = window.innerHeight + 'px';
-    ctx.scale(pixelRatio, pixelRatio);
+    // Add orientation change handler for mobile
+    if (isMobileDevice) {
+        window.addEventListener('orientationchange', () => {
+            // Small delay to ensure new dimensions are available
+            setTimeout(handleResize, 100);
+        });
+    }
 }
 
 // ============================================================================
@@ -851,12 +921,12 @@ function updateMenuPosition() {
         const rotated = rotate3D([menuX, menuY, menuZ], rotationX, rotationY, rotationZ);
         const scale = PERSPECTIVE.scale(rotated[2]);
         
-        const screenX = rotated[0] * scale + canvas.width / 2;
-        const screenY = rotated[1] * scale + canvas.height / 2;
+        const screenX = rotated[0] * scale + viewportWidth / 2;
+        const screenY = rotated[1] * scale + viewportHeight / 2;
         
         activeMenu.style.left = `${screenX}px`;
         activeMenu.style.top = `${screenY}px`;
-        activeMenu.style.transform = `translateX(-50%) translateY(-50%)`;
+        activeMenu.style.transform = `translateX(-50%) translateY(-50%) scaleY(0.8)`;
     }
 }
 
@@ -875,8 +945,8 @@ function drawNotifications() {
         ctx.fillStyle = `rgba(255, 255, 255, ${notif.opacity})`;
         ctx.fillText(
             notif.text, 
-            canvas.width / 2, 
-            canvas.height - 40 + notif.y
+            viewportWidth / 2, 
+            viewportHeight - 40 + notif.y
         );
         
         return true;
@@ -1143,10 +1213,9 @@ function createVertexMenu(index) {
     const dy = rotated[1];
     const length = Math.sqrt(dx * dx + dy * dy);
     
-    // Adjust menu distance based on device and star scale
-    const menuDistance = isMobileDevice ? 
-        240 * STAR_SCALE : // Increased distance for mobile
-        120 * STAR_SCALE;
+    // Store menu's 3D position for hit testing
+    // Adjust menu distance for mobile
+    const menuDistance = isMobileDevice ? 180 * currentScale : 120 * currentScale;
     const menuPos = {
         x: vertex.point[0] + (vertex.point[0] / length) * menuDistance,
         y: vertex.point[1] + (vertex.point[1] / length) * menuDistance,
@@ -1176,7 +1245,7 @@ function createVertexMenu(index) {
             element: menuItem,
             getBounds: () => {
                 const itemRect = menuItem.getBoundingClientRect();
-                const padding = isMobileDevice ? 25 : 3;  // Much larger padding for mobile
+                const padding = isMobileDevice ? 15 : 3;  // Larger padding for mobile
                 return {
                     left: itemRect.left - padding,
                     right: itemRect.right + padding,
@@ -1235,9 +1304,9 @@ function handleVertexClick(index) {
     const dy = rotated[1];
     const length = Math.sqrt(dx * dx + dy * dy);
     
-    const menuDistance = 120 * STAR_SCALE;
-    const screenX = (rotated[0] + (dx / length) * menuDistance) * scale + canvas.width / 2;
-    const screenY = (rotated[1] + (dy / length) * menuDistance) * scale + canvas.height / 2;
+    const menuDistance = 120 * currentScale;
+    const screenX = (rotated[0] + (dx / length) * menuDistance) * scale + viewportWidth / 2;
+    const screenY = (rotated[1] + (dy / length) * menuDistance) * scale + viewportHeight / 2;
     
     menu.style.left = `${screenX}px`;
     menu.style.top = `${screenY}px`;
