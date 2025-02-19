@@ -138,27 +138,11 @@ canvas {
 }
 
 .debug-button {
-    position: fixed;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: transparent;
-    color: rgba(255, 255, 255, 0.4);
-    padding: 8px 12px;
-    border: none;
-    cursor: pointer;
-    font-size: 11px;
-    z-index: 1000;
-    user-select: none;
-    transition: color 0.3s ease;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    display: none;
 }
 
-.debug-button:hover {
-    color: rgba(255, 255, 255, 0.8);
-}
-
-.debug-button.active {
-    color: rgba(255, 255, 255, 1);
+@media (min-width: 769px) {
+    .vertex-menu-header {
+        font-size: 16px;
+    }
 }

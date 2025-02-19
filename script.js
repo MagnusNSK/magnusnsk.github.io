@@ -115,6 +115,10 @@ let debugMode = false;
 let viewportWidth = window.innerWidth;
 let viewportHeight = window.innerHeight;
 let currentScale = STAR_SCALE;
+let mouseStartX = 0;
+let mouseStartY = 0;
+let hasMoved = false;
+const moveThreshold = 5; // pixels of movement before considering it a drag
 
 // ============================================================================
 // Utility Functions
@@ -247,7 +251,7 @@ const vertexInfo = [
     { 
         point: [0, 0, -250].map(x => x * STAR_SCALE),
         words: ["six-6", "Six-6", "SIX-6", "sIX-6", "siX-6"],
-        subtitle: "null"
+        subtitle: "settings"
     }
 ].map(info => ({
     ...info,
@@ -275,9 +279,9 @@ class FloatingWord {
         const theta = Math.random() * 2 * Math.PI;
         const phi = Math.acos((Math.random() * 2) - 1);
         
-        const radiusBias = Math.pow(Math.random(), 2.5);
-        const minRadius = 100 * STAR_SCALE;
-        const maxRadius = 500 * STAR_SCALE;
+        const radiusBias = Math.pow(Math.random(), 2);
+        const minRadius = 150 * STAR_SCALE;
+        const maxRadius = 600 * STAR_SCALE;
         const radius = minRadius + (maxRadius - minRadius) * radiusBias;
         
         this.x = radius * Math.sin(phi) * Math.cos(theta);
@@ -288,8 +292,7 @@ class FloatingWord {
         const maxDistance = maxRadius;
         const normalizedDistance = distanceFromCenter / maxDistance;
         
-        // Reduced base opacity values
-        this.baseOpacity = Math.max(0.05, 0.4 - Math.pow(normalizedDistance, 1.5));  // Reduced from 0.1, 0.8
+        this.baseOpacity = Math.max(0.25, 0.65 - Math.pow(normalizedDistance, 1.5));
         
         this.fadeDirection = Math.random() < 0.5 ? -1 : 1;
         this.fadeSpeed = 0.0005 + Math.random() * 0.0005;
@@ -298,8 +301,8 @@ class FloatingWord {
 
     update() {
         this.opacity += this.fadeDirection * this.fadeSpeed;
-        const minOpacity = Math.max(0.05, this.baseOpacity - 0.05);  // Reduced from 0.1
-        const maxOpacity = Math.min(0.4, this.baseOpacity + 0.05);   // Reduced from 0.8
+        const minOpacity = Math.max(0.25, this.baseOpacity - 0.05);
+        const maxOpacity = Math.min(0.65, this.baseOpacity + 0.05);
         
         if (this.opacity <= minOpacity || this.opacity >= maxOpacity) {
             this.fadeDirection *= -1;
@@ -365,9 +368,9 @@ function drawVertexNumbers() {
         
         const depthOpacity = ((1000 + rotated[2]) / 2000) * 0.9 + 0.1;
         
-        // Adjust font size based on device
-        const romanSize = isMobileDevice ? '14px' : '10px';
-        const subtitleSize = isMobileDevice ? '12px' : '8px';
+        // Adjust font size based on device - make desktop slightly larger
+        const romanSize = isMobileDevice ? '14px' : '12px';  // Increased from 10px to 16px for desktop
+        const subtitleSize = isMobileDevice ? '12px' : '10px';  // Increased from 8px to 14px for desktop
         
         // Draw Roman numeral
         ctx.font = `${romanSize} "Space Mono", monospace`;
@@ -459,7 +462,8 @@ function findClosestVertex(mouseX, mouseY) {
         const rotated = rotate3D(vertex.point, rotationX, rotationY, rotationZ);
         const distance = distanceToLine(rotated, nearPoint, farPoint);
         const zScale = PERSPECTIVE.scale(rotated[2]);
-        const detectionRadius = 40 * zScale;
+        // Increase detection radius for desktop
+        const detectionRadius = (isMobileDevice ? 40 : 50) * zScale;  // Increased from 40 to 50 for desktop
         
         if (distance < detectionRadius && distance < closestDistance) {
             closestDistance = distance;
@@ -490,6 +494,15 @@ function updateLegendHighlight(vertexIndex) {
 function handleMouseMove(e) {
     mouseX = e.clientX - rect.left;
     mouseY = e.clientY - rect.top;
+    
+    // Check if mouse has moved beyond threshold
+    if (!hasMoved) {
+        const dx = e.clientX - mouseStartX;
+        const dy = e.clientY - mouseStartY;
+        if (Math.sqrt(dx * dx + dy * dy) > moveThreshold) {
+            hasMoved = true;
+        }
+    }
     
     if (isDragging) {
         handleDragging(e);
@@ -599,30 +612,11 @@ function handleMenuClick(x, y) {
 }
 
 function handleMouseDown(e) {
-    // Check for menu clicks first
-    if (handleMenuClick(e.clientX, e.clientY)) {
-        return;  // Stop here if we clicked a menu item
-    }
+    mouseStartX = e.clientX;
+    mouseStartY = e.clientY;
+    hasMoved = false;
     
-    // Check for vertex clicks before starting drag
-    const localMouseX = e.clientX - rect.left;
-    const localMouseY = e.clientY - rect.top;
-    
-    vertexInfo.forEach((vertex, index) => {
-        if (vertex.screenPosition) {
-            const dx = localMouseX - vertex.screenPosition.x;
-            const dy = localMouseY - vertex.screenPosition.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            
-            if (distance < vertex.screenPosition.radius) {
-                createRipple(vertex.screenPosition.x, vertex.screenPosition.y);
-                handleVertexClick(index);
-                return;
-            }
-        }
-    });
-    
-    // If we get here, start dragging
+    // Start drag behavior
     isDragging = true;
     dragStartX = e.clientX;
     dragStartY = e.clientY;
@@ -635,10 +629,35 @@ function handleMouseDown(e) {
     clearTimeout(autoRotationTimeout);
 }
 
-function handleMouseUp() {
-    isDragging = false;
-    setRotationState(false);
+function handleMouseUp(e) {
+    if (!hasMoved) {
+        // Only handle click if we haven't moved (dragged)
+        const localMouseX = e.clientX - rect.left;
+        const localMouseY = e.clientY - rect.top;
+        
+        // Check for menu clicks first
+        if (handleMenuClick(e.clientX, e.clientY)) {
+            isDragging = false;
+            return;
+        }
+        
+        // Check for vertex clicks
+        vertexInfo.forEach((vertex, index) => {
+            if (vertex.screenPosition) {
+                const dx = localMouseX - vertex.screenPosition.x;
+                const dy = localMouseY - vertex.screenPosition.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance < vertex.screenPosition.radius) {
+                    createRipple(vertex.screenPosition.x, vertex.screenPosition.y);
+                    handleVertexClick(index);
+                    return;
+                }
+            }
+        });
+    }
     
+    isDragging = false;
     if (activeVertex === null) {
         startAutoRotationTimer();
     }
@@ -714,6 +733,11 @@ function handleTouchMove(e) {
     if (!isDragging) return;
     
     const touch = e.touches[0];
+    if (!touch) {
+        lastMouseX = null;
+        lastMouseY = null;
+        return;
+    }
     
     // Calculate movement distance
     const moveDistance = Math.sqrt(
@@ -746,33 +770,10 @@ function handleTouchMove(e) {
 
 function handleTouchEnd(e) {
     e.preventDefault();
-    
-    if (!touchMoved && !isDragging) {
-        // Handle as a tap if we didn't move
-        const rect = canvas.getBoundingClientRect();
-        const localX = lastMouseX - rect.left;
-        const localY = lastMouseY - rect.top;
-        
-        vertexInfo.forEach((vertex, index) => {
-            if (vertex.screenPosition) {
-                const dx = localX - vertex.screenPosition.x;
-                const dy = localY - vertex.screenPosition.y;
-                const distance = Math.sqrt(dx * dx + dy * dy);
-                
-                // Increase touch target size for mobile
-                const touchRadius = vertex.screenPosition.radius * (isMobileDevice ? 1.5 : 1);
-                
-                if (distance < touchRadius) {
-                    createRipple(vertex.screenPosition.x, vertex.screenPosition.y);
-                    handleVertexClick(index);
-                }
-            }
-        });
-    }
-    
     isDragging = false;
     touchMoved = false;
-    setRotationState(false);
+    lastMouseX = null;
+    lastMouseY = null;
     
     if (activeVertex === null) {
         startAutoRotationTimer();
@@ -822,23 +823,11 @@ function createLegend() {
     document.body.appendChild(legend);
 }
 
-function createDebugButton() {
-    const debugButton = document.createElement('div');
-    debugButton.className = 'debug-button';
-    debugButton.textContent = 'show collisions';  // New text
-    debugButton.addEventListener('click', () => {
-        debugMode = !debugMode;
-        debugButton.classList.toggle('active', debugMode);
-    });
-    document.body.appendChild(debugButton);
-}
-
 function initialize() {
     canvas = document.getElementById('starCanvas');
     ctx = canvas.getContext('2d');
     handleResize();
     
-    // Create more words but they'll be more concentrated in the center
     floatingWords = Array(200).fill(null).map(() => new FloatingWord());
     
     window.addEventListener('resize', handleResize);
@@ -863,7 +852,6 @@ function initialize() {
     canvas.style.touchAction = 'none';
     
     createLegend();
-    createDebugButton();
 
     // Add orientation change handler for mobile
     if (isMobileDevice) {
@@ -914,19 +902,37 @@ function applyRotation() {
 function updateMenuPosition() {
     if (activeMenu) {
         const vertexIndex = parseInt(activeMenu.dataset.vertexIndex);
-        const menuX = parseFloat(activeMenu.dataset.x);
-        const menuY = parseFloat(activeMenu.dataset.y);
-        const menuZ = parseFloat(activeMenu.dataset.z);
+        const vertex = vertexInfo[vertexIndex];
         
-        const rotated = rotate3D([menuX, menuY, menuZ], rotationX, rotationY, rotationZ);
+        // Get the rotated vertex position
+        const rotated = rotate3D(vertex.point, rotationX, rotationY, rotationZ);
         const scale = PERSPECTIVE.scale(rotated[2]);
         
-        const screenX = rotated[0] * scale + viewportWidth / 2;
-        const screenY = rotated[1] * scale + viewportHeight / 2;
+        // Calculate screen position of vertex
+        const vertexScreenX = rotated[0] * scale + viewportWidth / 2;
+        const vertexScreenY = rotated[1] * scale + viewportHeight / 2;
+        
+        // Increase menu distances
+        const menuDistance = isMobileDevice ? 120 : 100;  // Increased from 80/60
+        
+        // Calculate menu offset in screen space
+        const dx = rotated[0] * scale;
+        const dy = rotated[1] * scale;
+        const length = Math.sqrt(dx * dx + dy * dy);
+        
+        // If length is too small, use a default direction
+        const offsetX = length < 0.001 ? menuDistance : (dx / length) * menuDistance;
+        const offsetY = length < 0.001 ? menuDistance : (dy / length) * menuDistance;
+        
+        // Calculate final screen position
+        const screenX = vertexScreenX + offsetX;
+        const screenY = vertexScreenY + offsetY;
         
         activeMenu.style.left = `${screenX}px`;
         activeMenu.style.top = `${screenY}px`;
-        activeMenu.style.transform = `translateX(-50%) translateY(-50%) scaleY(0.8)`;
+        
+        // Update z-depth for hit testing
+        activeMenu.dataset.z = rotated[2];
     }
 }
 
@@ -1045,7 +1051,7 @@ const menuConfigs = {
             { 
                 label: 'Desktop version', 
                 action: () => {
-                    showNotification('Opening Desktop Version...');
+                    showNotification('^');
                     const win = window.open();
                     if (win) {
                         win.opener = null;
@@ -1056,7 +1062,7 @@ const menuConfigs = {
             { 
                 label: 'Online version', 
                 action: () => {
-                    showNotification('Opening Online Version...');
+                    showNotification('^');
                     const win = window.open();
                     if (win) {
                         win.opener = null;
@@ -1072,7 +1078,7 @@ const menuConfigs = {
             { 
                 label: 'documents', 
                 action: () => {
-                    showNotification('Opening Documents...');
+                    showNotification('^');
                     const win = window.open();
                     if (win) {
                         win.opener = null;
@@ -1080,13 +1086,6 @@ const menuConfigs = {
                     }
                 }
             },
-            { 
-                label: 'incomplete', 
-                action: () => {
-                    console.log('Not complete...');
-                    showNotification('Not complete...');
-                }
-            }
         ]
     },
     config: {
@@ -1095,11 +1094,11 @@ const menuConfigs = {
             { 
                 label: 'dot files', 
                 action: () => {
-                    showNotification('Opening Dot Files...');
+                    showNotification('^');
                     const win = window.open();
                     if (win) {
                         win.opener = null;
-                        win.location = 'https://github.com/MagnusNSK/documents/tree/main/dot-files';
+                        win.location = 'https://github.com/MagnusNSK/documents';
                     }
                 }
             }
@@ -1115,26 +1114,19 @@ const menuConfigs = {
                     showNotification('Not complete...');
                 }
             },
-            { 
-                label: 'incomplete', 
-                action: () => {
-                    console.log('Not complete...');
-                    showNotification('Not complete...');
-                }
-            }
         ]
     },
     links: {
         title: 'LINKS',
         items: [
             { 
-                label: 'x.com', 
+                label: 'youtube.com', 
                 action: () => {
-                    showNotification('Opening X.com Profile...');
+                    showNotification('Opening YouTube Channel...');
                     const win = window.open();
                     if (win) {
                         win.opener = null;
-                        win.location = 'https://x.com/MagnusNSK';
+                        win.location = 'https://www.youtube.com/@oloffnsk';
                     }
                 }
             },
@@ -1150,40 +1142,26 @@ const menuConfigs = {
                 }
             },
             { 
-                label: 'youtube.com', 
+                label: 'x.com', 
                 action: () => {
-                    showNotification('Opening YouTube Channel...');
+                    showNotification('Opening X.com Profile...');
                     const win = window.open();
                     if (win) {
                         win.opener = null;
-                        win.location = 'https://www.youtube.com/@oloffnsk';
+                        win.location = 'https://x.com/MagnusNSK';
                     }
                 }
-            }
+            },
         ]
     },
-    null: {
-        title: 'NULL',
+    settings: {
+        title: 'SETTINGS',
         items: [
             { 
-                label: 'incomplete', 
+                label: 'show collisions', 
                 action: () => {
-                    console.log('Not complete...');
-                    showNotification('Not complete...');
-                }
-            },
-            { 
-                label: 'incomplete', 
-                action: () => {
-                    console.log('Not complete...');
-                    showNotification('Not complete...');
-                }
-            },
-            { 
-                label: 'incomplete', 
-                action: () => {
-                    console.log('Not complete...');
-                    showNotification('Not complete...');
+                    debugMode = !debugMode;
+                    showNotification(debugMode ? 'Collisions visible' : 'Collisions hidden');
                 }
             }
         ]
@@ -1191,7 +1169,7 @@ const menuConfigs = {
 };
 
 function getMenuConfig(index) {
-    const configKeys = ['tools', 'about', 'config', 'media', 'links', 'null'];
+    const configKeys = ['tools', 'about', 'config', 'media', 'links', 'settings'];
     return menuConfigs[configKeys[index]];
 }
 
@@ -1204,27 +1182,35 @@ function createVertexMenu(index) {
     const config = getMenuConfig(index);
     const vertex = vertexInfo[index];
     
-    // Calculate 3D position for menu
+    // Get the rotated vertex position
     const rotated = rotate3D(vertex.point, rotationX, rotationY, rotationZ);
     const scale = PERSPECTIVE.scale(rotated[2]);
     
-    // Calculate direction vector from center to point (matching Roman numeral logic)
-    const dx = rotated[0];
-    const dy = rotated[1];
+    // Calculate screen position of vertex
+    const vertexScreenX = rotated[0] * scale + viewportWidth / 2;
+    const vertexScreenY = rotated[1] * scale + viewportHeight / 2;
+    
+    // Increase menu distances
+    const menuDistance = isMobileDevice ? 120: 100;  // Increased from 80/60
+    
+    // Calculate menu offset in screen space
+    const dx = rotated[0] * scale;
+    const dy = rotated[1] * scale;
     const length = Math.sqrt(dx * dx + dy * dy);
     
-    // Store menu's 3D position for hit testing
-    // Adjust menu distance for mobile
-    const menuDistance = isMobileDevice ? 180 * currentScale : 120 * currentScale;
-    const menuPos = {
-        x: vertex.point[0] + (vertex.point[0] / length) * menuDistance,
-        y: vertex.point[1] + (vertex.point[1] / length) * menuDistance,
-        z: vertex.point[2] + (vertex.point[2] / length) * menuDistance
-    };
+    // If length is too small, use a default direction
+    const offsetX = length < 0.001 ? menuDistance : (dx / length) * menuDistance;
+    const offsetY = length < 0.001 ? menuDistance : (dy / length) * menuDistance;
     
-    menu.dataset.x = menuPos.x;
-    menu.dataset.y = menuPos.y;
-    menu.dataset.z = menuPos.z;
+    // Calculate final screen position
+    const screenX = vertexScreenX + offsetX;
+    const screenY = vertexScreenY + offsetY;
+    
+    menu.style.left = `${screenX}px`;
+    menu.style.top = `${screenY}px`;
+    
+    // Store the z-depth for hit testing
+    menu.dataset.z = rotated[2];
     
     // Create menu content
     const header = document.createElement('div');
